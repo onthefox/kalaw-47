@@ -1,5 +1,6 @@
 """
 Настройка подключения к PostgreSQL через SQLAlchemy
+Оптимизировано для production с улучшенным connection pool
 """
 
 import os
@@ -12,7 +13,15 @@ DATABASE_URL = os.getenv(
     "postgresql://symbio:symbio@localhost:5432/symbio",
 )
 
-engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10)
+# Оптимизированный connection pool для production
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,           # Увеличено с 5 до 20
+    max_overflow=30,        # Увеличено с 10 до 30
+    pool_pre_ping=True,     # Проверка соединения перед использованием
+    pool_recycle=3600,      # Пересоздавать соединения через 1 час
+    echo=False              # Выключить SQL логи в production
+)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 

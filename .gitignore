@@ -1,32 +1,39 @@
-__pycache__/
-*.pyc
-*.pyo
-.env
-.env.*
+```gitignore
+# Dependencies
+node_modules/
 .venv/
 venv/
-node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Build artifacts
 dist/
 build/
-*.egg-info/
-*.egg
-*.so
-*.dylib
-*.db
-*.sqlite3
-*.sqlite
-*.node
-*.wasm
-*.tiktoken
-*.noindex
-*.map
-copilot-language-server/
-autoload/
-plugin/
-syntax/
-lua/
-doc/
-*.mobileconfig
-*.admx
-*.adml
-*.ps1
+target/
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Logs
+*.log
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+```

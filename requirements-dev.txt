@@ -1,0 +1,33 @@
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0  # For async testing of FastAPI
+
+# Production dependencies (included for convenience)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+pydantic>=2.0.0
+
+# Future: Caching
+redis>=5.0.0
+
+# Future: JWT Auth
+pyjwt>=2.8.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Future: Rate Limiting
+slowapi>=0.1.7
+
+# Future: LLM Integration
+openai>=1.0.0
+anthropic>=0.7.0
+
+# Future: WebSocket
+websockets>=12.0
+
+# Logging
+python-json-logger>=2.0.0

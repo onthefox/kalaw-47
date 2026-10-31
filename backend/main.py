@@ -15,9 +15,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.db import SessionLocal, get_db, init_db
 from backend.models import Entity, Link
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Adapt SymbioSystem",
     description="Симбиотическая экосистема с автономным движком и живым графом смыслов",
-    version="0.1.0",
+    version="0.2.0",  # Обновлена версия после оптимизаций
     lifespan=lifespan,
 )
 
@@ -70,17 +70,51 @@ def post_intent(req: IntentRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/entities")
-def list_entities(db: Session = Depends(get_db)):
-    """Список всех сущностей в графе."""
-    entities = db.query(Entity).all()
-    return [e.to_dict() for e in entities]
+def list_entities(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """Список всех сущностей в графе с пагинацией и eager loading."""
+    # Eager loading для предотвращения N+1 запросов
+    entities = (
+        db.query(Entity)
+        .options(selectinload(Entity.source_links), selectinload(Entity.target_links))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    total = db.query(Entity).count()
+    return {
+        "items": [e.to_dict() for e in entities],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + limit < total
+    }
 
 
 @app.get("/links")
-def list_links(db: Session = Depends(get_db)):
-    """Список всех связей в графе."""
-    links = db.query(Link).all()
-    return [l.to_dict() for l in links]
+def list_links(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """Список всех связей в графе с пагинацией."""
+    links = (
+        db.query(Link)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    total = db.query(Link).count()
+    return {
+        "items": [l.to_dict() for l in links],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + limit < total
+    }
 
 
 @app.post("/entity")
