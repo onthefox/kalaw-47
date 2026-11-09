@@ -10,10 +10,13 @@ SymbioFlow — обработка намерений (полный цикл).
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import logging
 import uuid
 from typing import Any
 
+from core.llm.orchestrator import LLMOrchestrator
 from core.symbio_core import interpret_intent
 from core.symbio_core.confidence import blend, score
 from core.symbio_core.context import ContextMemory, context_memory
@@ -22,6 +25,33 @@ from engine.llm import llm_chain
 from engine.observer import publish_change
 
 logger = logging.getLogger("symbio.flow")
+
+_core_orchestrator: LLMOrchestrator | None = None
+
+
+def get_core_orchestrator() -> LLMOrchestrator:
+    """Ленивый singleton оркестратора core/llm (issue #9, задача 3)."""
+    global _core_orchestrator
+    if _core_orchestrator is None:
+        _core_orchestrator = LLMOrchestrator()
+    return _core_orchestrator
+
+
+def reset_core_orchestrator() -> None:
+    """Сброс singleton (для тестов)."""
+    global _core_orchestrator
+    _core_orchestrator = None
+
+
+def _run_async(coro):
+    """Выполнить корутину из синхронного кода (handle_intent остаётся sync)."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    # Мы внутри работающего event loop — уходим в отдельный поток
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coro).result()
 
 
 def handle_intent(
@@ -32,12 +62,31 @@ def handle_intent(
     use_llm: bool = True,
     context_memory: ContextMemory = context_memory,
     llm_chain=llm_chain,
+    orchestrator: LLMOrchestrator | None = None,
 ) -> dict[str, Any]:
-    """Полный цикл: текст → парсинг → оценка → выполнение → результат."""
-    intent_id = uuid.uuid4().hex[:12]
+    """Полный цикл: текст → парсинг → оценка → выполнение → результат.
 
-    # 1. Rule-based парсинг (всегда доступен)
-    parsed = interpret_intent(text)
+    LLM-путь (issue #9, задача 3): при настроенных провайдерах текст идёт
+    через LLMOrchestrator.interpret_with_fallback (OpenAI → Anthropic →
+    Google → rule-based); иначе — legacy engine.llm-цепочка (совместимость).
+    """
+    intent_id = uuid.uuid4().hex[:12]
+    tokens_used = 0
+
+    # 1. Парсинг: core/llm оркестратор (LLM + fallback) или rule-based
+    core_result = None
+    if orchestrator is None and use_llm:
+        orchestrator = get_core_orchestrator() if get_core_orchestrator().has_available_providers() else None
+    if use_llm and orchestrator is not None and orchestrator.has_available_providers():
+        core_result = _run_async(orchestrator.interpret_with_fallback(text, db))
+        if core_result.provider != "rule-based":
+            parsed = dict(core_result.data)
+            parsed["confidence"] = core_result.confidence
+            tokens_used = core_result.input_tokens + core_result.output_tokens
+        else:
+            parsed = interpret_intent(text)
+    else:
+        parsed = interpret_intent(text)
 
     # 2. Контекст: разрешение ссылок он/это/тот
     if use_context and session_id:
@@ -58,10 +107,14 @@ def handle_intent(
             publish_change("intent.clarification", data={"intent_id": intent_id})
             return result
 
-    # 3. LLM-вероятность (если провайдеры настроены и разрешены)
+    # 3. LLM-вероятность (legacy engine.llm; пропускается, если core-оркестратор
+    # уже обработал запрос выше)
     llm_probability: float | None = None
     llm_provider: str | None = None
-    if use_llm and llm_chain.available:
+    if core_result is not None:
+        llm_probability = core_result.confidence
+        llm_provider = core_result.provider if core_result.provider != "rule-based" else None
+    elif use_llm and llm_chain.available:
         chain_result = llm_chain.interpret(text)
         if chain_result:
             llm_probability = float(chain_result.get("probability", 0.5))
@@ -96,6 +149,8 @@ def handle_intent(
         }
         if llm_provider:
             result["llm_provider"] = llm_provider
+            result["provider"] = llm_provider
+            result["tokens_used"] = tokens_used
         publish_change(
             "intent.clarification",
             data={"intent_id": intent_id, "confidence": confidence},
@@ -112,6 +167,8 @@ def handle_intent(
     result["session_id"] = session_id
     if llm_provider:
         result["llm_provider"] = llm_provider
+        result["provider"] = llm_provider
+        result["tokens_used"] = tokens_used
 
     # 6. Контекст: запомнить намерение (с результатом для ссылок)
     if use_context and session_id:
