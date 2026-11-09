@@ -22,8 +22,10 @@ from backend.models import Base
 from core.symbio_core.confidence import feedback_store
 from core.symbio_core.context import ContextMemory
 from core.symbio_hive import hive
+from engine.coordinator import coordinator
 from engine.llm import llm_chain
 from engine.observer import observer
+from engine.reviewer import reviewer
 
 
 @pytest.fixture()
@@ -67,6 +69,8 @@ def clean_singletons():
     hive.reset()
     observer.reset()
     feedback_store.reset()
+    reviewer.reset()
+    coordinator.reset()
     llm_chain.cost_tracker.reset()
     llm_chain.rate_limiter.reset()
     llm_chain.last_provider = None

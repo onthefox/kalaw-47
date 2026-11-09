@@ -29,6 +29,8 @@ EVENT_TYPES = (
     "module.generated",
     "intent.processed",
     "intent.clarification",
+    "review.completed",
+    "coordinator.dispatched",
 )
 
 
