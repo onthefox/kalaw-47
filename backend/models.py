@@ -7,7 +7,9 @@ SQLAlchemy ORM-модели graph-абстракции: Entity (с иерарх�
 
 from __future__ import annotations
 
-from sqlalchemy import Column, ForeignKey, Index, Integer, String, Text
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 from core.symbio_hive.links import LinkType, normalize_link_type
@@ -104,4 +106,31 @@ class Link(Base):
             "target_id": self.target_id,
             "type": normalize_link_type(self.type),
             "meta": self.meta or "{}",
+        }
+
+
+class LLMUsage(Base):
+    """Учёт обращений к LLM-провайдерам (issue #9, задача 3: cost tracking)."""
+
+    __tablename__ = "llm_usage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    provider = Column(String(50), nullable=False, index=True)
+    action = Column(String(50), default="unknown")
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    estimated_cost = Column(Float, default=0.0)
+    success = Column(Boolean, default=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "provider": self.provider,
+            "action": self.action,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "estimated_cost": self.estimated_cost,
+            "success": self.success,
         }

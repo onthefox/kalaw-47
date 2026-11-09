@@ -16,6 +16,7 @@ FastAPI — основной сервер Adapt SymbioSystem.
   POST /plan/execute — выполнить план (sequential/parallel)
   POST /autogen — сгенерировать модуль по шаблону
   GET  /llm/status — провайдеры, лимиты, стоимость
+  GET  /stats/llm — агрегированная стоимость LLM (issue #9)
   GET  /stats — статистика экосистемы
   GET  /health — проверка здоровья
 """
@@ -33,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db, init_db
 from backend.graph import build_tree, creates_cycle, get_descendants, get_subtree
-from backend.models import Entity, Link
+from backend.models import Entity, Link, LLMUsage
 from backend.ontology import (
     apply_import,
     export_graphml,
@@ -60,6 +61,20 @@ class IntentRequest(BaseModel):
     session_id: str | None = None
     use_context: bool = True
     use_llm: bool = True
+
+
+class IntentResponse(BaseModel):
+    """Ответ /intent с LLM-атрибуцией (issue #9, задача 3).
+
+    extra=allow: сохраняет свободные поля пайплайна (route, intent, ...).
+    """
+
+    model_config = {"extra": "allow"}
+
+    action: str | None = None
+    provider: str | None = None
+    confidence: float | None = None
+    tokens_used: int | None = None
 
 
 class FeedbackRequest(BaseModel):
@@ -123,7 +138,7 @@ app = FastAPI(
 
 # --- Намерения ---
 
-@app.post("/intent")
+@app.post("/intent", response_model=IntentResponse)
 def post_intent(req: IntentRequest, db: Session = Depends(get_db)):
     """Намерение → контекст → LLM/rule-based → confidence → выполнение."""
     if not req.intent or not req.intent.strip():
@@ -442,6 +457,39 @@ def llm_status():
 
 
 # --- Статистика ---
+
+@app.get("/stats/llm")
+def llm_stats(db: Session = Depends(get_db)):
+    """Агрегированная статистика стоимости LLM (issue #9, задача 3)."""
+    rows = db.query(LLMUsage).all()
+    agg: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        entry = agg.setdefault(
+            row.provider,
+            {
+                "provider": row.provider,
+                "requests": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "estimated_cost": 0.0,
+                "success": 0,
+                "failed": 0,
+            },
+        )
+        entry["requests"] += 1
+        entry["input_tokens"] += row.input_tokens or 0
+        entry["output_tokens"] += row.output_tokens or 0
+        entry["estimated_cost"] = round(entry["estimated_cost"] + (row.estimated_cost or 0.0), 6)
+        entry["success" if row.success else "failed"] += 1
+    providers = sorted(agg.values(), key=lambda e: e["provider"])
+    return {
+        "total_requests": sum(e["requests"] for e in providers),
+        "total_estimated_cost": round(sum(e["estimated_cost"] for e in providers), 6),
+        "total_input_tokens": sum(e["input_tokens"] for e in providers),
+        "total_output_tokens": sum(e["output_tokens"] for e in providers),
+        "providers": providers,
+    }
+
 
 @app.get("/stats")
 def get_stats(db: Session = Depends(get_db)):
