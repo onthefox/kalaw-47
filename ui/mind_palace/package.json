@@ -1,14 +1,10 @@
 {
   "name": "mind_palace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "d3": "^7.8.5"
-  },
+  "description": "MindPalace — интерактивный граф сущностей Adapt SymbioSystem (vanilla ES modules + vendored d3)",
   "scripts": {
-    "start": "npx serve -s public",
-    "lint": "echo \"No linter configured\""
+    "start": "python -m http.server 3000",
+    "check": "node --check src/api.js && node --check src/theme.js && node --check src/graph.js && node --check src/entityCard.js && node --check src/app.js"
   }
 }

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark light" />
+  <title>MindPalace — Adapt SymbioSystem</title>
+  <script>
+    // Тема применяется до первой отрисовки, чтобы не было мигания.
+    (function () {
+      try {
+        var theme = localStorage.getItem("mindpalace.theme");
+        if (theme !== "light" && theme !== "dark") {
+          theme =
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        }
+        document.documentElement.dataset.theme = theme;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+      // Адрес API можно переопределить query-параметром: ?api=http://localhost:9000
+      try {
+        var api = new URLSearchParams(window.location.search).get("api");
+        if (api !== null) window.KALAW_API_URL = api;
+      } catch (e) {
+        /* нет query-параметра — используется значение по умолчанию */
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <script src="./vendor/d3.min.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <noscript>
+    <p style="padding: 2rem; font-family: sans-serif">
+      MindPalace требует включённый JavaScript.
+    </p>
+  </noscript>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
