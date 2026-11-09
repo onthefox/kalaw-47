@@ -170,6 +170,16 @@ def handle_intent(
         result["provider"] = llm_provider
         result["tokens_used"] = tokens_used
 
+    # 5b. Review-gate: мутацию проверяет ревизор (issue #3, 5 агентов)
+    try:
+        from engine.reviewer import reviewer as reviewer_agent
+
+        finding = reviewer_agent.review_mutation(result)
+        if finding:
+            result["review"] = {"healthy": False, "findings": [finding]}
+    except ImportError:  # pragma: no cover
+        pass
+
     # 6. Контекст: запомнить намерение (с результатом для ссылок)
     if use_context and session_id:
         stored = dict(parsed)

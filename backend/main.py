@@ -15,6 +15,8 @@ FastAPI — основной сервер Adapt SymbioSystem.
   POST /plan — сгенерировать план из намерений
   POST /plan/execute — выполнить план (sequential/parallel)
   POST /autogen — сгенерировать модуль по шаблону
+  POST /review — аудит онтологии агентом-ревизором (issue #3)
+  GET  /agents/status — реестр 5 агентов Flow Executor (issue #3)
   GET  /llm/status — провайдеры, лимиты, стоимость
   GET  /stats/llm — агрегированная стоимость LLM (issue #9)
   GET  /stats — статистика экосистемы
@@ -46,8 +48,10 @@ from core.symbio_hive.links import LinkType, is_cycle_checked, normalize_link_ty
 from core.symbio_core.confidence import feedback_store
 from core.symbio_core.context import ContextMemory, context_memory
 from engine.autogen import TEMPLATE_TYPES, autogen_handle, generate_module
+from engine.coordinator import coordinator
 from engine.llm import llm_chain
 from engine.observer import observer, publish_change
+from engine.reviewer import reviewer
 from engine.planner import Plan, execute_plan, generate_plan, validate_plan
 from engine.symbio_flow import handle_intent
 
@@ -437,6 +441,22 @@ def autogen_endpoint(req: AutogenRequest, db: Session = Depends(get_db)):
 def autogen_templates():
     """Список доступных шаблонов (issue #20)."""
     return {"templates": list(TEMPLATE_TYPES)}
+
+
+# --- Агенты (ревизор + координатор, issue #3) ---
+
+@app.post("/review")
+def run_review(db: Session = Depends(get_db)):
+    """Аудит целостности онтологии агентом-ревизором (issue #3)."""
+    return reviewer.audit(db)
+
+
+@app.get("/agents/status")
+def agents_status():
+    """Реестр 5 агентов Flow Executor + статус ревизора (issue #3)."""
+    status = coordinator.status()
+    status["reviewer"] = reviewer.stats()
+    return status
 
 
 # --- LLM ---
