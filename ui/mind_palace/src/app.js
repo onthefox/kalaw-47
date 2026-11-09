@@ -13,6 +13,7 @@ import {
 } from "./api.js";
 import { currentTheme, toggleTheme, watchSystemTheme } from "./theme.js";
 import { MindGraph } from "./graph.js";
+import { EntityCard } from "./entityCard.js";
 
 const SHELL_HTML = `
 <header class="topbar">
@@ -101,6 +102,7 @@ const state = {
 let createdIndex = new Map();
 
 let graph = null;
+let card = null;
 let inFlight = false;
 
 const el = {};
@@ -501,6 +503,61 @@ function wireEvents() {
 function selectEntity(id) {
   state.selectedId = id;
   graph.setSelected(id);
+  if (id == null) {
+    card.close();
+  } else {
+    openCard(id);
+  }
+}
+
+/** Контекст и действия для карточки сущности (#19). */
+const cardActions = {
+  run: async (promiseFactory) => {
+    const keepId = state.selectedId;
+    try {
+      await promiseFactory();
+    } catch (err) {
+      showToast(err.message, "error");
+      return;
+    }
+    await refresh();
+    if (keepId && state.entities.some((e) => String(e.id) === String(keepId))) {
+      openCard(keepId);
+    } else {
+      selectEntity(null);
+    }
+  },
+  entitiesProvider: () => state.entities,
+  onRename: (oldName, newName) => sendIntent(`переименовать ${oldName} в ${newName}`),
+  onAddTag: (name, tag) => sendIntent(`добавить тег ${tag} к ${name}`),
+  onPriority: (name, direction) =>
+    sendIntent(`${direction === "raise" ? "повысить" : "понизить"} приоритет ${name}`),
+  onLink: (source, target, type) => createLink(source, target, type),
+  onDelete: (name) => sendIntent(`удалить ${name}`),
+  onError: (err) => showToast(err.message, "error"),
+};
+
+function openCard(id) {
+  const entity = state.entities.find((e) => String(e.id) === String(id));
+  if (!entity) {
+    card.close();
+    return;
+  }
+  const meta = parseMeta(entity);
+  const nameById = new Map(state.entities.map((e) => [String(e.id), e.name]));
+  card.open({
+    entity: {
+      id: entity.id,
+      name: entity.name,
+      tags: Array.isArray(meta.tags) ? meta.tags.map(String) : [],
+      priority: meta.priority || null,
+    },
+    links: state.links,
+    nameById,
+    createdTs: createdIndex.has(entity.name) ? createdIndex.get(entity.name) : null,
+    eventsLoader: () => fetchEvents({ entity: entity.name, limit: 100 }),
+    actions: cardActions,
+  });
 }
 
 function mount() {
@@ -508,7 +565,7 @@ function mount() {
   for (const id of [
     "search", "refresh-btn", "theme-btn", "linktype-filters", "tag-filters", "tags-empty",
     "priority-filters", "date-from", "date-to", "date-hint", "reset-filters", "intent-form",
-    "intent-input", "intent-submit", "intent-feedback", "graph", "zoom-in", "zoom-out", "fit",
+    "intent-input", "intent-submit", "intent-feedback", "graph", "graph-region", "zoom-in", "zoom-out", "fit",
     "state-overlay", "conn-dot", "stats-line", "api-line", "toasts",
   ]) {
     el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = qs(id);
@@ -516,6 +573,12 @@ function mount() {
 
   el.apiLine.textContent = `API: ${API_URL || "same-origin"}`;
   graph = new MindGraph(el.graph, { onSelect: selectEntity });
+  card = new EntityCard(el.graphRegion, {
+    onNavigate: (id) => {
+      graph.focusEntity(id);
+      selectEntity(id);
+    },
+  });
   updateThemeButton();
   wireEvents();
   watchSystemTheme();
