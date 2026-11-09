@@ -2,7 +2,7 @@
 
 > **Не просто Neovim-плагин** — это полноценная симбиотическая AI-экосистема, где Neovim — лишь один из интерфейсов.
 
-[![CI](https://github.com/onthefox/piZdabolot/actions/workflows/ci.yml/badge.svg)](https://github.com/onthefox/piZdabolot/actions)
+[![CI](https://github.com/onthefox/kalaw-47/actions/workflows/ci.yml/badge.svg)](https://github.com/onthefox/kalaw-47/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-green.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](docker-compose.yml)
@@ -26,35 +26,42 @@
 ## 🏗️ Архитектура
 
 ```
-piZdabolot (SymbioSystem MVP)
+kalaw-47 (SymbioSystem v0.3)
 ├── core/
 │   ├── symbio_core/     # Ядро: интерпретация намерений (rules.py)
-│   └── symbio_hive/     # Рой: онтология, сущности, связи (hive.py)
+│   ├── symbio_hive/     # Рой: онтология, сущности, связи (hive.py)
+│   └── llm/             # LLM-каскад: openai → anthropic → google → rules
 ├── engine/
 │   ├── symbio_flow/     # Движок: приём → план → выполнение (flow.py)
-│   └── autogen/         # Автоген: создание сущностей/связей/модулей
-├── backend/             # FastAPI + SQLAlchemy + PostgreSQL
-│   ├── main.py          # 7 REST эндпоинтов
-│   ├── models.py        # ORM: Entity, Link
-│   └── db.py            # PostgreSQL подключение
-├── ui/mind_palace/      # React + d3.js визуализация графа
-│   ├── src/App.jsx      # Дашборд
-│   ├── src/Graph.jsx    # Force-directed граф (d3.js)
-│   └── src/EntityCard.jsx # Карточка сущности
-├── meta/revolution/     # Roadmap, сценарии, истории
-└── docker-compose.yml   # Полный стек одним командой
+│   ├── planner/         # Планировщик: генерация и валидация планов
+│   ├── observer/        # Наблюдатель: события, журнал, алерты
+│   ├── reviewer/        # Ревизор: аудиты целостности онтологии
+│   ├── coordinator/     # Координатор: реестр и диспетчеризация агентов
+│   └── autogen/         # Автоген: создание модулей по шаблонам
+├── backend/             # FastAPI + SQLAlchemy
+│   ├── main.py          # 23 REST-эндпоинта: интенты, онтология, агенты, LLM
+│   ├── models.py        # ORM: Entity, Link, LLMUsage
+│   └── db.py            # Подключение к БД
+├── ui/mind_palace/      # Ванильный UI (ES-модули + vendored d3 v7.9.0)
+│   ├── index.html       # Одна страница
+│   ├── src/app.js       # Точка входа
+│   ├── src/graph.js     # Force-directed граф
+│   └── src/entityCard.js # Карточка сущности
+├── docs/                # DEMO.md, RELEASE_SUMMARY.md, archive/
+└── docker-compose.yml   # Полный стек одной командой
 ```
 
 ### Компоненты
 
 | Компонент | Назначение | Статус |
 |-----------|-----------|--------|
-| **SymbioCore** | Интерпретация намерений (parse → структурировать) | ✅ MVP |
-| **SymbioHive** | Живая экосистема: онтология, сущности, связи | ✅ MVP |
-| **SymbioFlow** | Автономный движок: приём → план → выполнение | ✅ MVP |
-| **Autogen** | Автогенерация сущностей и связей по тексту | ✅ MVP |
-| **Backend** | FastAPI (7 endpoints) + PostgreSQL | ✅ MVP |
-| **MindPalace UI** | React + d3.js force-directed граф | ✅ MVP |
+| **SymbioCore** | Интерпретация намерений (12 интентов) + confidence-скоринг | ✅ |
+| **SymbioHive** | Онтология: иерархия, типизированные связи, защита от циклов | ✅ |
+| **SymbioFlow** | Автономный движок с review-gate ревизора | ✅ |
+| **LLM-слой** | Каскад провайдеров, rate limiter, cost tracker, feedback loop | ✅ |
+| **Агенты** | 5 агентов: observer, planner, executor, reviewer, coordinator | ✅ |
+| **Backend** | FastAPI (23 endpointа) + SQLAlchemy | ✅ |
+| **MindPalace UI** | Ванильный force-directed граф + карточка сущности | ✅ |
 
 ---
 
@@ -82,8 +89,8 @@ cd backend
 pip install -r requirements.txt
 make backend   # uvicorn --reload на :8000
 
-# Фронтенд (в другом терминале)
-make frontend  # npm install + npm start на :3000
+# Фронтенд (в другом терминале) — статика, сборка не нужна
+make frontend  # python -m http.server 3000 на :3000
 ```
 
 ### Полезные команды
@@ -100,11 +107,27 @@ make clean     # Полная очистка
 
 | Method | Path | Описание |
 |--------|------|----------|
-| `POST` | `/intent` | Обработать текстовое намерение |
-| `GET` | `/entities` | Список всех сущностей |
-| `GET` | `/links` | Список всех связей |
+| `POST` | `/intent` | Обработать текстовое намерение (LLM/rule-based) |
+| `POST` | `/intent/feedback` | Подтвердить/отклонить интерпретацию |
+| `GET` | `/entities` | Список сущностей (`?tree=`, пагинация) |
+| `GET` | `/entities/{id}/descendants` | Потомки сущности |
 | `POST` | `/entity` | Создать сущность напрямую |
-| `POST` | `/link` | Создать связь напрямую |
+| `POST` | `/entity/{id}/parent` | Назначить родителя |
+| `GET` | `/links` | Список связей (фильтр по типу) |
+| `POST` | `/link` | Создать типизированную связь |
+| `GET` | `/ontology/export` | Экспорт онтологии (JSON/GraphML) |
+| `POST` | `/ontology/import` | Импорт онтологии (merge/replace) |
+| `GET` | `/events` | Журнал изменений |
+| `GET` | `/alerts` | Сработавшие алерты |
+| `POST` | `/alerts/rules` | Добавить alert-правило |
+| `POST` | `/plan` | Сгенерировать и провалидировать план |
+| `POST` | `/plan/execute` | Выполнить план (sequential/parallel) |
+| `POST` | `/autogen` | Сгенерировать модуль по шаблону |
+| `GET` | `/autogen/templates` | Список шаблонов autogen |
+| `POST` | `/review` | Аудит онтологии агентом-ревизором |
+| `GET` | `/agents/status` | Статус 5 агентов Flow Executor |
+| `GET` | `/llm/status` | Статус LLM-провайдеров, лимиты, стоимость |
+| `GET` | `/stats/llm` | Агрегированная статистика LLM |
 | `GET` | `/stats` | Статистика экосистемы |
 | `GET` | `/health` | Health check |
 
@@ -150,7 +173,7 @@ curl -X POST http://localhost:8000/intent \
 
 ### MindPalace UI
 
-> 🎬 **GIF/видео скоро будет** — запишем после запуска `docker-compose up`
+> Пошаговый сценарий демонстрации: [`docs/DEMO.md`](docs/DEMO.md)
 
 ### API в действии
 
@@ -175,7 +198,7 @@ curl http://localhost:8000/links
 ## 🛠️ Технологический стек
 
 - **Backend**: Python 3.11+ · FastAPI · SQLAlchemy · PostgreSQL 15
-- **Frontend**: React 18 · d3.js (force-directed graph) · Axios
+- **Frontend**: ванильные ES-модули · vendored d3 v7.9.0 (сборка не требуется)
 - **Инфраструктура**: Docker · docker-compose · GitHub Actions CI
 - **Тестирование**: CI с PostgreSQL сервисом + Docker build проверка
 
@@ -183,27 +206,27 @@ curl http://localhost:8000/links
 
 ## 📅 Roadmap
 
-### ✅ Q2 2026 — MVP (текущий)
+### ✅ Q2 2026 — MVP
 - [x] SymbioCore v1 — интерпретация намерений
 - [x] SymbioHive — онтология и связи
 - [x] SymbioFlow — автономный пайплайн
 - [x] Autogen — автогенерация
-- [x] FastAPI backend (7 endpoints)
-- [x] MindPalace UI (React + d3.js)
+- [x] FastAPI backend (23 endpoints)
+- [x] MindPalace UI (ванильные ES-модули + d3)
 - [x] Docker + docker-compose
 - [x] CI pipeline
 
-### 🚧 Q3 2026 — Автономные агенты
-- [ ] SymbioFlow autonomous agents
-- [ ] Multi-agent coordination
-- [ ] Real-time WebSocket updates
-- [ ] Entity cards с деталями
-- [ ] LLM-powered intent parsing
+### ✅ Q3 2026 — Автономные агенты и LLM
+- [x] SymbioFlow autonomous agents (5 агентов)
+- [x] Multi-agent coordination (координатор + review-gate)
+- [x] Entity cards с деталями
+- [x] LLM-powered intent parsing
+- [ ] Real-time WebSocket updates (сейчас — polling `/events`)
 
-### 📋 Q4 2026 — MindPalace 2.0
-- [ ] Интерактивный граф с фильтрами
-- [ ] Временная шкала эволюции
-- [ ] Экспорт/импорт онтологии
+### ✅ Q4 2026 — MindPalace 2.0 (частично)
+- [x] Интерактивный граф
+- [x] Временная шкала эволюции (таймлайн карточки)
+- [x] Экспорт/импорт онтологии (JSON/GraphML)
 - [ ] Плагины для VS Code, JetBrains
 - [ ] API rate limiting + auth
 
@@ -214,7 +237,7 @@ curl http://localhost:8000/links
 - [ ] SymbioSystem Marketplace
 - [ ] Community-driven ontology
 
-Полный roadmap: [`meta/revolution/ROADMAP.md`](meta/revolution/ROADMAP.md)
+Полный отчёт о релизе: [`docs/RELEASE_SUMMARY.md`](docs/RELEASE_SUMMARY.md)
 
 ---
 
@@ -239,6 +262,6 @@ curl http://localhost:8000/links
 
 ## 📞 Контакты
 
-- **Репозиторий**: https://github.com/onthefox/piZdabolot
-- **Issues**: https://github.com/onthefox/piZdabolot/issues
+- **Репозиторий**: https://github.com/onthefox/kalaw-47
+- **Issues**: https://github.com/onthefox/kalaw-47/issues
 - **Автор**: OnTheFox
